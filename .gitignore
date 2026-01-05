@@ -1,0 +1,16 @@
+.env
+# Config files with secrets
+configs/sensor.local.yaml
+*.local.yaml
+
+# Logs
+logs/
+*.log
+
+# Environment files
+.env
+.env.local
+
+# Buffer persistence files
+buffer.json
+*.buffer
