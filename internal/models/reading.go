@@ -34,7 +34,11 @@ func (r *Reading) IsValid() bool {
 // get the reading as a string
 func (r *Reading) String() string {
 	// TODO: Format as "SensorID: temp=XX.X°C humidity=XX.X% at YYYY-MM-DD HH:MM:SS"
-	return fmt.Sprintf("SensorID: %s, Timestamp: %s, Humidity: %.1f%%, Temperature: %.1f%%", r.SensorID, r.Timestamp.Format(time.RFC3339), r.Humidity, r.Temperature)
+	return fmt.Sprintf("SensorID: %s, Timestamp: %s, Humidity: %.1f%%, Temperature: %.1f°C",
+		r.SensorID,
+		r.Timestamp.Format(time.RFC3339),
+		r.Humidity,
+		r.Temperature)
 }
 
 // NewReading creates a new Reading with the current timestamp
