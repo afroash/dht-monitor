@@ -14,3 +14,7 @@ logs/
 # Buffer persistence files
 buffer.json
 *.buffer
+
+dev-data.db
+server
+configs/server.yaml

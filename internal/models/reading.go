@@ -16,24 +16,38 @@ type Reading struct {
 // IsValid checks if the reading values are within acceptable ranges
 // DHT11 ranges: temp -20 to 60°C, humidity 20-90%
 func (r *Reading) IsValid() bool {
+	const (
+		minTemp     = -20.0
+		maxTemp     = 60.0
+		minHumidity = 0.0
+		maxHumidity = 100.0
+	)
+
 	if r.SensorID == "" {
 		return false
 	}
+
+	// Check timestamp
 	if r.Timestamp.IsZero() {
 		return false
 	}
-	if r.Humidity < 20 || r.Humidity > 90 {
+
+	// Check temperature range
+	if r.Temperature < minTemp || r.Temperature > maxTemp {
 		return false
 	}
-	if r.Temperature < -20 || r.Temperature > 60 {
+
+	// Check humidity range
+	if r.Humidity < minHumidity || r.Humidity > maxHumidity {
 		return false
 	}
+
 	return true
 }
 
 // get the reading as a string
 func (r *Reading) String() string {
-	// TODO: Format as "SensorID: temp=XX.X°C humidity=XX.X% at YYYY-MM-DD HH:MM:SS"
+
 	return fmt.Sprintf("SensorID: %s, Timestamp: %s, Humidity: %.1f%%, Temperature: %.1f°C",
 		r.SensorID,
 		r.Timestamp.Format(time.RFC3339),
@@ -43,11 +57,23 @@ func (r *Reading) String() string {
 
 // NewReading creates a new Reading with the current timestamp
 func NewReading(sensorID string, temperature, humidity float64) *Reading {
-	// TODO: Create and return a Reading with provided values and time.Now()
 	return &Reading{
 		SensorID:    sensorID,
 		Timestamp:   time.Now(),
 		Humidity:    humidity,
 		Temperature: temperature,
+	}
+}
+
+// Copy returns a deep copy of the Reading
+func (r *Reading) Copy() *Reading {
+	if r == nil {
+		return nil
+	}
+	return &Reading{
+		SensorID:    r.SensorID,
+		Timestamp:   r.Timestamp,
+		Humidity:    r.Humidity,
+		Temperature: r.Temperature,
 	}
 }

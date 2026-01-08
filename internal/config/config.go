@@ -33,14 +33,6 @@ type SensorConfig struct {
 
 // ServerConfig contains connection settings for the remote server
 type ServerConfig struct {
-	// TODO: Add fields:
-	// - URL (string) - WebSocket URL (e.g., "wss://example.com/sensor-stream")
-	// - AuthToken (string) - authentication token
-	// - ConnectTimeout (time.Duration) - connection timeout
-	// - ReconnectInterval (time.Duration) - initial reconnect delay
-	// - MaxReconnectInterval (time.Duration) - max reconnect delay
-	// - PingInterval (time.Duration) - heartbeat/ping interval
-	// - PongTimeout (time.Duration) - pong response timeout
 	URL                  string        `yaml:"url"`
 	AuthToken            string        `yaml:"auth_token"`
 	ConnectTimeout       time.Duration `yaml:"connect_timeout"`
@@ -52,11 +44,6 @@ type ServerConfig struct {
 
 // BufferConfig contains settings for the reading buffer
 type BufferConfig struct {
-	// TODO: Add fields:
-	// - Size (int) - max number of readings to buffer (default 1000)
-	// - DropOldest (bool) - drop oldest when full (vs newest)
-	// - PersistToDisk (bool) - write to disk when full (future feature)
-	// - PersistPath (string) - path for disk persistence
 	Size          int    `yaml:"size"`
 	DropOldest    bool   `yaml:"drop_oldest"`
 	PersistToDisk bool   `yaml:"persist_to_disk"`
@@ -65,12 +52,6 @@ type BufferConfig struct {
 
 // LoggingConfig contains logging settings
 type LoggingConfig struct {
-	// TODO: Add fields:
-	// - Level (string) - log level: "debug", "info", "warn", "error"
-	// - Format (string) - "json" or "text"
-	// - FilePath (string) - log file path (empty = stdout only)
-	// - MaxSizeMB (int) - max log file size before rotation
-	// - MaxBackups (int) - number of old log files to keep
 	Level      string `yaml:"level"`
 	Format     string `yaml:"format"`
 	FilePath   string `yaml:"file_path"`
@@ -80,8 +61,6 @@ type LoggingConfig struct {
 
 // LoadConfig loads configuration from a YAML file
 func LoadConfig(path string) (*Config, error) {
-	// TODO: Implement
-	// - Read file from path
 	yamlData, err := os.ReadFile(path)
 	if err != nil {
 		fmt.Println("Error reading config file:", err)
@@ -183,17 +162,6 @@ func (c *Config) OverrideFromEnv() {
 
 // Validate checks if the configuration is valid
 func (c *Config) Validate() error {
-	// TODO: Validate required fields and ranges
-	// Required:
-	//   - Sensor.ID (non-empty)
-	//   - Sensor.GPIOPin (> 0)
-	//   - Server.URL (non-empty, starts with ws:// or wss://)
-	//   - Server.AuthToken (non-empty)
-	// Ranges:
-	//   - Sensor.ReadInterval (>= 1s)
-	//   - Buffer.Size (>= 10, <= 100000)
-	//   - Server.ReconnectInterval (>= 1s)
-	// Return error with descriptive message if invalid
 	if c.Sensor.ID == "" {
 		return fmt.Errorf("sensor ID is required")
 	}
@@ -217,8 +185,6 @@ func (c *Config) Validate() error {
 
 // String returns a safe string representation (hides auth token)
 func (c *Config) String() string {
-	// TODO: Return formatted string with config values
-	// IMPORTANT: Mask Server.AuthToken (show only first 4 chars + "...")
 	return fmt.Sprintf("Config{Sensor: %+v, Server: [URL=%s, Token=%s...], Buffer: %+v, Logging: %+v}",
 		c.Sensor,
 		c.Server.URL,
