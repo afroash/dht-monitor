@@ -38,7 +38,6 @@ jobs:
           mkdir -p deploy/web/templates
           cp cmd/server/dht-server deploy/bin/
           cp web/templates/dashboard.html deploy/web/templates/
-          cp configs/server.yaml deploy/configs/server.yaml
 
       - name: 🔑 Setup SSH
         run: |
