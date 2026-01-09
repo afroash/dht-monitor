@@ -1,0 +1,324 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>DHT Monitor Dashboard</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 2rem;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+
+        header {
+            text-align: center;
+            color: white;
+            margin-bottom: 3rem;
+        }
+
+        h1 {
+            font-size: 2.5rem;
+            margin-bottom: 0.5rem;
+        }
+
+        .subtitle {
+            opacity: 0.9;
+            font-size: 1.1rem;
+        }
+
+        .grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 1.5rem;
+            margin-bottom: 2rem;
+        }
+
+        .card {
+            background: white;
+            border-radius: 1rem;
+            padding: 2rem;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+        }
+
+        .card-title {
+            font-size: 0.9rem;
+            text-transform: uppercase;
+            color: #666;
+            margin-bottom: 1rem;
+            font-weight: 600;
+        }
+
+        .reading {
+            display: flex;
+            align-items: baseline;
+            gap: 0.5rem;
+        }
+
+        .reading-value {
+            font-size: 3rem;
+            font-weight: bold;
+            color: #333;
+        }
+
+        .reading-unit {
+            font-size: 1.5rem;
+            color: #999;
+        }
+
+        .status {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.5rem;
+            padding: 0.5rem 1rem;
+            border-radius: 2rem;
+            font-size: 0.9rem;
+            font-weight: 600;
+        }
+
+        .status-online {
+            background: #d4edda;
+            color: #155724;
+        }
+
+        .status-offline {
+            background: #f8d7da;
+            color: #721c24;
+        }
+
+        .status-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            animation: pulse 2s ease-in-out infinite;
+        }
+
+        .status-online .status-dot {
+            background: #28a745;
+        }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+
+        .chart-container {
+            grid-column: 1 / -1;
+            height: 400px;
+        }
+
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 1rem;
+        }
+
+        .stat {
+            text-align: center;
+        }
+
+        .stat-value {
+            font-size: 2rem;
+            font-weight: bold;
+            color: #667eea;
+        }
+
+        .stat-label {
+            font-size: 0.9rem;
+            color: #666;
+            margin-top: 0.25rem;
+        }
+
+        .last-update {
+            text-align: center;
+            color: white;
+            opacity: 0.8;
+            font-size: 0.9rem;
+            margin-top: 2rem;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>🌡️ DHT Monitor</h1>
+            <p class="subtitle">Real-time Temperature & Humidity Monitoring</p>
+        </header>
+
+        <div class="grid">
+            <div class="card">
+                <div class="card-title">Temperature</div>
+                <div class="reading">
+                    <span class="reading-value" id="temp-value">--</span>
+                    <span class="reading-unit">°C</span>
+                </div>
+            </div>
+
+            <div class="card">
+                <div class="card-title">Humidity</div>
+                <div class="reading">
+                    <span class="reading-value" id="humidity-value">--</span>
+                    <span class="reading-unit">%</span>
+                </div>
+            </div>
+
+            <div class="card">
+                <div class="card-title">Sensor Status</div>
+                <span class="status" id="status">
+                    <span class="status-dot"></span>
+                    <span id="status-text">Loading...</span>
+                </span>
+            </div>
+
+            <div class="card">
+                <div class="card-title">Statistics</div>
+                <div class="stats-grid">
+                    <div class="stat">
+                        <div class="stat-value" id="total-readings">--</div>
+                        <div class="stat-label">Total Readings</div>
+                    </div>
+                    <div class="stat">
+                        <div class="stat-value" id="sensor-count">--</div>
+                        <div class="stat-label">Sensors</div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="card chart-container">
+                <div class="card-title">Temperature History</div>
+                <canvas id="temp-chart"></canvas>
+            </div>
+        </div>
+
+        <div class="last-update">
+            Last updated: <span id="last-update-time">Never</span>
+        </div>
+    </div>
+
+    <script>
+        // Initialize Chart.js
+        const ctx = document.getElementById('temp-chart');
+        const tempChart = new Chart(ctx, {
+            type: 'line',
+            data: {
+                labels: [],
+                datasets: [{
+                    label: 'Temperature (°C)',
+                    data: [],
+                    borderColor: '#667eea',
+                    backgroundColor: 'rgba(102, 126, 234, 0.1)',
+                    tension: 0.4,
+                    fill: true
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: {
+                        display: false
+                    }
+                },
+                scales: {
+                    y: {
+                        beginAtZero: false
+                    }
+                }
+            }
+        });
+
+        // Fetch and update current reading
+        async function updateCurrent() {
+            try {
+                const response = await fetch('/api/current');
+                
+                if (!response.ok) {
+                    console.error('Failed to fetch current reading: HTTP', response.status);
+                    const statusEl = document.getElementById('status');
+                    statusEl.className = 'status status-offline';
+                    document.getElementById('status-text').textContent = 'Offline';
+                    return;
+                }
+                
+                const reading = await response.json();
+                
+                if (reading) {
+                    document.getElementById('temp-value').textContent = reading.temperature.toFixed(1);
+                    document.getElementById('humidity-value').textContent = reading.humidity.toFixed(0);
+                    
+                    const statusEl = document.getElementById('status');
+                    statusEl.className = 'status status-online';
+                    document.getElementById('status-text').textContent = 'Online';
+                    
+                    document.getElementById('last-update-time').textContent = new Date().toLocaleTimeString();
+                }
+            } catch (error) {
+                console.error('Failed to fetch current reading:', error);
+                const statusEl = document.getElementById('status');
+                statusEl.className = 'status status-offline';
+                document.getElementById('status-text').textContent = 'Offline';
+            }
+        }
+
+        // Fetch and update stats
+        async function updateStats() {
+            try {
+                const response = await fetch('/api/stats');
+                const stats = await response.json();
+                
+                document.getElementById('total-readings').textContent = stats.total_readings || 0;
+                document.getElementById('sensor-count').textContent = stats.unique_sensors || 0;
+            } catch (error) {
+                console.error('Failed to fetch stats:', error);
+            }
+        }
+
+        // Fetch and update chart
+        async function updateChart() {
+            try {
+                const response = await fetch('/api/history?limit=20');
+                const readings = await response.json();
+                
+                if (readings && readings.length > 0) {
+                    tempChart.data.labels = readings.map(r => 
+                        new Date(r.timestamp).toLocaleTimeString()
+                    ).reverse();
+                    tempChart.data.datasets[0].data = readings.map(r => 
+                        r.temperature
+                    ).reverse();
+                    tempChart.update();
+                }
+            } catch (error) {
+                console.error('Failed to update chart:', error);
+            }
+        }
+
+        // Initial load
+        updateCurrent();
+        updateStats();
+        updateChart();
+
+        // Auto-refresh every 5 seconds
+        setInterval(() => {
+            updateCurrent();
+            updateStats();
+        }, 5000);
+
+        // Update chart every 30 seconds
+        setInterval(updateChart, 30000);
+    </script>
+</body>
+</html>
