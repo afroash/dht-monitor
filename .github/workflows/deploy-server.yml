@@ -1,0 +1,132 @@
+name: Deploy Server to Production
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'cmd/server/**'
+      - 'internal/**'
+      - 'web/**'
+      - 'configs/server.yaml'
+      - '.github/workflows/deploy-server.yml'
+  workflow_dispatch:  # Allow manual trigger
+
+jobs:
+  deploy:
+    name: Build and Deploy to Lightsail
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: 🛎️ Checkout Code
+        uses: actions/checkout@v4
+
+      - name: 🐹 Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.21'
+
+      - name: 🔧 Build Server Binary
+        run: |
+          cd cmd/server
+          GOOS=linux GOARCH=amd64 go build -o dht-server -ldflags="-s -w" .
+          chmod +x dht-server
+          ls -lh dht-server
+
+      - name: 📦 Prepare Deployment Package
+        run: |
+          mkdir -p deploy/bin
+          mkdir -p deploy/web/templates
+          cp cmd/server/dht-server deploy/bin/
+          cp web/templates/dashboard.html deploy/web/templates/
+          cp configs/server.yaml deploy/configs/server.yaml
+
+      - name: 🔑 Setup SSH
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.SSH_KEY }}" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          ssh-keyscan -H ${{ secrets.SSH_HOST }} >> ~/.ssh/known_hosts
+
+      - name: 🚀 Deploy to Server
+        run: |
+          echo "Deploying to ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }}"
+          
+          # Stop service before replacing binary
+          ssh -i ~/.ssh/deploy_key ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }} \
+            "sudo systemctl stop dht-server || true"
+          
+          # Deploy binary
+          scp -i ~/.ssh/deploy_key cmd/server/dht-server \
+            ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }}:/tmp/dht-server
+          
+          ssh -i ~/.ssh/deploy_key ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }} \
+            "sudo mv /tmp/dht-server /opt/dht-monitor/bin/dht-server && \
+             sudo chown dht-monitor:dht-monitor /opt/dht-monitor/bin/dht-server && \
+             sudo chmod 755 /opt/dht-monitor/bin/dht-server"
+          
+          # Deploy web assets
+          scp -i ~/.ssh/deploy_key -r web/templates/* \
+            ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }}:/tmp/
+          
+          ssh -i ~/.ssh/deploy_key ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }} \
+            "sudo cp /tmp/dashboard.html /opt/dht-monitor/web/templates/ && \
+             sudo chown -R dht-monitor:dht-monitor /opt/dht-monitor/web"
+
+      - name: 🔧 Configure Environment
+        run: |
+          ssh -i ~/.ssh/deploy_key ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }} \
+            "echo 'SERVER_AUTH_TOKEN=${{ secrets.SERVER_AUTH_TOKEN }}' | \
+             sudo tee /opt/dht-monitor/.env > /dev/null && \
+             sudo chmod 600 /opt/dht-monitor/.env && \
+             sudo chown dht-monitor:dht-monitor /opt/dht-monitor/.env"
+
+      - name: ☁️ Ensure Cloudflare Tunnel is Running
+        run: |
+          ssh -i ~/.ssh/deploy_key ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }} \
+            "sudo systemctl is-active cloudflared || sudo systemctl start cloudflared"
+
+      - name: 🔄 Start DHT Server
+        run: |
+          ssh -i ~/.ssh/deploy_key ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }} \
+            "sudo systemctl start dht-server && \
+             sudo systemctl enable dht-server"
+
+      - name: ⏳ Wait for Service
+        run: sleep 10
+
+      - name: 🏥 Health Check
+        run: |
+          echo "Checking service status..."
+          ssh -i ~/.ssh/deploy_key ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }} \
+            "sudo systemctl status dht-server --no-pager"
+          
+          echo "Testing health endpoint..."
+          MAX_RETRIES=5
+          RETRY_COUNT=0
+          
+          while [ $RETRY_COUNT -lt $MAX_RETRIES ]; do
+            if curl -f -m 10 https://dht.afroash.com/health; then
+              echo "✅ Health check passed!"
+              exit 0
+            fi
+            RETRY_COUNT=$((RETRY_COUNT + 1))
+            echo "Retry $RETRY_COUNT/$MAX_RETRIES..."
+            sleep 5
+          done
+          
+          echo "❌ Health check failed after $MAX_RETRIES attempts"
+          exit 1
+
+      - name: 📊 Show Logs on Failure
+        if: failure()
+        run: |
+          ssh -i ~/.ssh/deploy_key ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }} \
+            "sudo journalctl -u dht-server -n 50 --no-pager"
+
+      - name: 🎉 Deployment Summary
+        if: success()
+        run: |
+          echo "✅ Deployment successful!"
+          echo "🌐 Dashboard: https://dht.afroash.com"
+          echo "🏥 Health: https://dht.afroash.com/health"
+          echo "📊 Stats: https://dht.afroash.com/api/stats"
