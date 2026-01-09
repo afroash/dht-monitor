@@ -244,6 +244,15 @@
         async function updateCurrent() {
             try {
                 const response = await fetch('/api/current');
+                
+                if (!response.ok) {
+                    console.error('Failed to fetch current reading: HTTP', response.status);
+                    const statusEl = document.getElementById('status');
+                    statusEl.className = 'status status-offline';
+                    document.getElementById('status-text').textContent = 'Offline';
+                    return;
+                }
+                
                 const reading = await response.json();
                 
                 if (reading) {

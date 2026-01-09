@@ -14,12 +14,14 @@ import (
 // Handler manages WebSocket connections from sensors
 type Handler struct {
 	// TODO: Add fields:
-	upgrader      websocket.Upgrader
-	authToken     string
-	store         ReadingStore
-	logger        zerolog.Logger
-	activeSensors map[string]*SensorConnection
-	mutex         sync.RWMutex
+	upgrader       websocket.Upgrader
+	authToken      string
+	store          ReadingStore
+	logger         zerolog.Logger
+	activeSensors  map[string]*SensorConnection
+	connToSensorID map[string]string // Maps conn.RemoteAddr().String() to actual sensor ID
+	allowedOrigins []string
+	mutex          sync.RWMutex
 }
 
 // SensorConnection represents an active sensor connection
@@ -31,19 +33,54 @@ type SensorConnection struct {
 }
 
 // NewHandler creates a new WebSocket handler
-func NewHandler(authToken string, store ReadingStore, logger zerolog.Logger) *Handler {
-	return &Handler{
-		upgrader: websocket.Upgrader{
-			ReadBufferSize:  1024,
-			WriteBufferSize: 1024,
-			CheckOrigin:     func(r *http.Request) bool { return true },
-		},
-		authToken:     authToken,
-		store:         store,
-		logger:        logger,
-		activeSensors: make(map[string]*SensorConnection),
-		mutex:         sync.RWMutex{},
+func NewHandler(authToken string, store ReadingStore, logger zerolog.Logger, allowedOrigins ...string) *Handler {
+	h := &Handler{
+		authToken:      authToken,
+		store:          store,
+		logger:         logger,
+		activeSensors:  make(map[string]*SensorConnection),
+		connToSensorID: make(map[string]string),
+		allowedOrigins: allowedOrigins,
+		mutex:          sync.RWMutex{},
 	}
+
+	h.upgrader = websocket.Upgrader{
+		ReadBufferSize:  1024,
+		WriteBufferSize: 1024,
+		CheckOrigin:     h.checkOrigin,
+	}
+
+	return h
+}
+
+// checkOrigin validates the incoming request's Origin against the configured allowlist
+func (h *Handler) checkOrigin(r *http.Request) bool {
+	// If no allowed origins configured, reject all cross-origin requests
+	if len(h.allowedOrigins) == 0 {
+		// Allow same-origin requests (no Origin header means same-origin)
+		origin := r.Header.Get("Origin")
+		if origin == "" {
+			return true
+		}
+		h.logger.Warn().Str("origin", origin).Msg("Rejected WebSocket connection: no allowed origins configured")
+		return false
+	}
+
+	origin := r.Header.Get("Origin")
+	// No Origin header means same-origin request
+	if origin == "" {
+		return true
+	}
+
+	// Check against allowlist
+	for _, allowed := range h.allowedOrigins {
+		if origin == allowed {
+			return true
+		}
+	}
+
+	h.logger.Warn().Str("origin", origin).Msg("Rejected WebSocket connection: origin not in allowlist")
+	return false
 }
 
 // ServeHTTP handles WebSocket connection requests
@@ -81,17 +118,20 @@ func (h *Handler) validateToken(authHeader string) bool {
 
 // handleConnection manages a single WebSocket connection
 func (h *Handler) handleConnection(conn *websocket.Conn) {
-	sensorID := conn.RemoteAddr().String()
+	connKey := conn.RemoteAddr().String()
 	sensorConn := &SensorConnection{
-		SensorID:    sensorID,
+		SensorID:    connKey, // Will be updated when we receive heartbeat with real sensor ID
 		Conn:        conn,
 		LastSeen:    time.Now(),
 		ConnectedAt: time.Now(),
 	}
-	h.activeSensors[sensorID] = sensorConn
+
+	h.mutex.Lock()
+	h.activeSensors[connKey] = sensorConn
+	h.mutex.Unlock()
 
 	defer conn.Close()
-	defer h.removeSensor(sensorID)
+	defer h.removeSensor(connKey)
 
 	// Set read deadline
 
@@ -111,12 +151,12 @@ func (h *Handler) handleConnection(conn *websocket.Conn) {
 			}
 			break
 		}
-		h.handleMessage(conn, &msg)
+		h.handleMessage(conn, connKey, &msg)
 	}
 }
 
 // handleMessage processes a single message from the sensor
-func (h *Handler) handleMessage(conn *websocket.Conn, msg *models.Message) {
+func (h *Handler) handleMessage(conn *websocket.Conn, connKey string, msg *models.Message) {
 	h.logger.Debug().Str("type", string(msg.Type)).Msg("Received message")
 
 	switch msg.Type {
@@ -125,7 +165,7 @@ func (h *Handler) handleMessage(conn *websocket.Conn, msg *models.Message) {
 	case models.MessageTypeBatch:
 		h.handleBatch(msg)
 	case models.MessageTypeHeartbeat:
-		h.handleHeartbeat(msg)
+		h.handleHeartbeat(connKey, msg)
 	default:
 		h.logger.Warn().Str("type", string(msg.Type)).Msg("Unknown message type")
 	}
@@ -148,8 +188,10 @@ func (h *Handler) handleReading(msg *models.Message) {
 	}
 	if reading.IsValid() {
 		h.store.Add(&reading)
+		h.logger.Info().Str("sensor_id", reading.SensorID).Float64("temp", reading.Temperature).Float64("humidity", reading.Humidity).Msg("Reading stored")
+	} else {
+		h.logger.Warn().Str("sensor_id", reading.SensorID).Float64("temp", reading.Temperature).Float64("humidity", reading.Humidity).Msg("Reading ignored: invalid")
 	}
-	h.logger.Info().Str("sensor_id", reading.SensorID).Float64("temp", reading.Temperature).Float64("humidity", reading.Humidity).Msg("Reading stored")
 }
 
 // handleBatch processes a batch of readings
@@ -168,13 +210,28 @@ func (h *Handler) handleBatch(msg *models.Message) {
 }
 
 // handleHeartbeat processes a heartbeat message
-func (h *Handler) handleHeartbeat(msg *models.Message) {
+func (h *Handler) handleHeartbeat(connKey string, msg *models.Message) {
 	var heartbeat models.HeartbeatMessage
 	if err := msg.UnmarshalPayload(&heartbeat); err != nil {
 		h.logger.Error().Err(err).Msg("Failed to unmarshal heartbeat")
 		return
 	}
-	h.updateSensorLastSeen(heartbeat.SensorID)
+
+	// Update the mapping from connection key to actual sensor ID
+	h.mutex.Lock()
+	if heartbeat.SensorID != "" {
+		// Check if we need to rekey the activeSensors entry
+		if existingID, exists := h.connToSensorID[connKey]; !exists || existingID != heartbeat.SensorID {
+			h.connToSensorID[connKey] = heartbeat.SensorID
+			// Update the SensorConnection's SensorID field
+			if sensor, ok := h.activeSensors[connKey]; ok {
+				sensor.SensorID = heartbeat.SensorID
+			}
+		}
+	}
+	h.mutex.Unlock()
+
+	h.updateSensorLastSeen(connKey)
 	h.logger.Debug().Str("sensor_id", heartbeat.SensorID).Int64("uptime", heartbeat.Uptime).Msg("Heartbeat received")
 }
 
@@ -193,19 +250,25 @@ func (h *Handler) sendAck(conn *websocket.Conn) {
 }
 
 // updateSensorLastSeen updates the last seen timestamp for a sensor
-func (h *Handler) updateSensorLastSeen(sensorID string) {
+func (h *Handler) updateSensorLastSeen(connKey string) {
 	h.mutex.Lock()
 	defer h.mutex.Unlock()
-	if sensor, exists := h.activeSensors[sensorID]; exists {
+	if sensor, exists := h.activeSensors[connKey]; exists {
 		sensor.LastSeen = time.Now()
 	}
 }
 
 // removeSensor removes a sensor from the active sensors map
-func (h *Handler) removeSensor(sensorID string) {
+func (h *Handler) removeSensor(connKey string) {
 	h.mutex.Lock()
 	defer h.mutex.Unlock()
-	delete(h.activeSensors, sensorID)
+	// Get the actual sensor ID for logging before deletion
+	sensorID := connKey
+	if realID, exists := h.connToSensorID[connKey]; exists {
+		sensorID = realID
+	}
+	delete(h.activeSensors, connKey)
+	delete(h.connToSensorID, connKey)
 	h.logger.Info().Str("sensor_id", sensorID).Msg("Sensor disconnected")
 }
 
@@ -232,7 +295,6 @@ type ReadingStore interface {
 
 // Constants for WebSocket timeouts
 const (
-	writeWait  = 10 * time.Second
-	pongWait   = 60 * time.Second
-	pingPeriod = (pongWait * 9) / 10
+	writeWait = 10 * time.Second
+	pongWait  = 60 * time.Second
 )

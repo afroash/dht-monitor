@@ -24,11 +24,12 @@ type ServerSettings struct {
 	// - AuthToken (string)
 	// - ReadTimeout (time.Duration)
 	// - WriteTimeout (time.Duration)
-	Port         int           `yaml:"port"`
-	Host         string        `yaml:"host"`
-	AuthToken    string        `yaml:"auth_token"`
-	ReadTimeout  time.Duration `yaml:"read_timeout"`
-	WriteTimeout time.Duration `yaml:"write_timeout"`
+	Port           int           `yaml:"port"`
+	Host           string        `yaml:"host"`
+	AuthToken      string        `yaml:"auth_token"`
+	ReadTimeout    time.Duration `yaml:"read_timeout"`
+	WriteTimeout   time.Duration `yaml:"write_timeout"`
+	AllowedOrigins []string      `yaml:"allowed_origins"`
 }
 
 // StorageSettings contains storage configuration

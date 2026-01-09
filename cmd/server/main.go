@@ -47,6 +47,11 @@ func main() {
 
 	// Serve static dashboard
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+		// Only serve dashboard for exact root path or /index.html
+		if r.URL.Path != "/" && r.URL.Path != "/index.html" {
+			http.NotFound(w, r)
+			return
+		}
 		logger.Info().Str("path", r.URL.Path).Msg("Serving dashboard")
 		http.ServeFile(w, r, "web/templates/dashboard.html")
 	})
@@ -59,6 +64,7 @@ func main() {
 
 	// Health check endpoint
 	mux.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
 		fmt.Fprintf(w, `{"status":"ok","version":"%s"}`, version)
 	})
@@ -83,6 +89,7 @@ func main() {
 		cfg.Server.AuthToken,
 		store,
 		logger,
+		cfg.Server.AllowedOrigins...,
 	)
 
 	mux.HandleFunc("/sensor-stream", handler.ServeHTTP)
