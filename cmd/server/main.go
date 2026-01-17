@@ -9,15 +9,18 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"syscall"
 	"time"
 
 	"github.com/afroash/dht-monitor/internal/config"
 	"github.com/afroash/dht-monitor/internal/server"
+	"github.com/afroash/dht-monitor/internal/storage"
+
 	"github.com/rs/zerolog"
 )
 
-const version = "v0.1.0"
+const version = "v0.2.0"
 
 func main() {
 	// Parse flags
@@ -32,7 +35,6 @@ func main() {
 	//fmt.Println(cfg.String())
 	store := server.NewMemoryStore(cfg.Storage.BufferSize)
 
-	// TODO: Setup logging
 	// Similar to sensor client
 	logger := zerolog.New(os.Stdout).With().Timestamp().Logger()
 
@@ -41,9 +43,50 @@ func main() {
 		Int("port", cfg.Server.Port).
 		Msg("Starting DHT Monitor Server")
 
+	var sqliteStore *storage.SQLiteStore
+	var dbWriter *storage.DBWriter
+	var retentionCleaner *storage.RetentionCleaner
+
+	// Setup database
+	if cfg.Database.Enabled {
+		// Ensure data directory exists
+		dataDir := filepath.Dir(cfg.Database.Path)
+		if err := os.MkdirAll(dataDir, 0755); err != nil {
+			log.Fatalf("Failed to create data directory: %v", err)
+		}
+		sqliteStore, err = storage.NewSQLiteStore(cfg.Database.Path, logger)
+		if err != nil {
+			log.Fatalf("Failed to create SQLite store: %v", err)
+		}
+		log.Printf("SQLite store created at %s", cfg.Database.Path)
+
+		// Create Async DB Writer
+		writerConfig := storage.DBWriterConfig{
+			BatchSize:   cfg.Database.BatchSize,
+			FlushPeriod: cfg.Database.FlushPeriod,
+			ChannelSize: cfg.Database.ChannelSize,
+		}
+
+		dbWriter = storage.NewDBWriter(sqliteStore, writerConfig, logger)
+
+		// Create Retention Cleaner
+		cleanerConfig := storage.RetentionCleanerConfig{
+			RetentionDays: cfg.Database.RetentionDays,
+			CleanupPeriod: cfg.Database.CleanupPeriod,
+		}
+		retentionCleaner = storage.NewRetentionCleaner(sqliteStore, cleanerConfig, logger)
+		logger.Info().Int("retention_days", cfg.Database.RetentionDays).Dur("cleanup_period", cfg.Database.CleanupPeriod).Msg("RetentionCleaner started")
+
+	}
+
 	mux := http.NewServeMux()
 
-	apiHandler := server.NewAPIHandler(store, logger)
+	var apiHandler *server.APIHandler
+	if sqliteStore != nil {
+		apiHandler = server.NewAPIHandlerWithHistory(store, sqliteStore, logger)
+	} else {
+		apiHandler = server.NewAPIHandler(store, logger)
+	}
 
 	// Serve static dashboard
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
@@ -60,6 +103,8 @@ func main() {
 	mux.HandleFunc("/api/current", apiHandler.HandleCurrent)
 	mux.HandleFunc("/api/history", apiHandler.HandleHistory)
 	mux.HandleFunc("/api/stats", apiHandler.HandleStats)
+	mux.HandleFunc("/api/daily/stats", apiHandler.HandleDailyStats)
+	mux.HandleFunc("/api/sensors", apiHandler.HandleSensors)
 	mux.HandleFunc("/api/dashboard-data", apiHandler.HandleDashboardData)
 
 	// Health check endpoint
@@ -91,6 +136,9 @@ func main() {
 		logger,
 		cfg.Server.AllowedOrigins...,
 	)
+	if dbWriter != nil {
+		handler.SetDBWriter(dbWriter)
+	}
 
 	mux.HandleFunc("/sensor-stream", handler.ServeHTTP)
 
@@ -115,6 +163,19 @@ func main() {
 	<-sigChan
 
 	logger.Info().Msg("Shutting down server...")
+
+	if dbWriter != nil {
+		dbWriter.Stop()
+		logger.Info().Msg("DBWriter stopped")
+	}
+	if retentionCleaner != nil {
+		retentionCleaner.Stop()
+		logger.Info().Msg("RetentionCleaner stopped")
+	}
+	if sqliteStore != nil {
+		sqliteStore.Close()
+		logger.Info().Msg("SQLiteStore closed")
+	}
 
 	// Graceful shutdown
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)

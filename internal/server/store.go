@@ -7,23 +7,8 @@ import (
 	"github.com/afroash/dht-monitor/internal/models"
 )
 
-// Always return copies, not pointers to internal data:
-// - When returning slices or maps, return copies (not references)
-// - Use .Copy() method for slices/maps if available
-// - Avoid returning pointers to internal data
-// - Always return copies of data structures
-// - Use sync.RWMutex for thread safety
-// - Use sync.Mutex for exclusive access
-// - Use sync.WaitGroup for synchronization
-// - Use sync.Once for once initialization
-
 // MemoryStore is an in-memory ring buffer for sensor readings
 type MemoryStore struct {
-	// TODO: Add fields:
-	// - capacity (int) - max readings to keep per sensor
-	// - data (map[string][]*models.Reading) - readings by sensor ID
-	// - mutex (sync.RWMutex) - thread safety
-	// - totalReadings (int64) - total readings received
 	capacity      int
 	data          map[string][]*models.Reading
 	mutex         sync.RWMutex
@@ -32,11 +17,7 @@ type MemoryStore struct {
 
 // NewMemoryStore creates a new in-memory store
 func NewMemoryStore(capacity int) *MemoryStore {
-	// TODO: Implement
-	// - Create MemoryStore with given capacity
-	// - Initialize data map
-	//
-	// Tip: Pre-allocate with make([]*models.Reading, 0, capacity)
+
 	return &MemoryStore{
 		capacity:      capacity,
 		data:          make(map[string][]*models.Reading),
