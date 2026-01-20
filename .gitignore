@@ -18,3 +18,5 @@ buffer.json
 dev-data.db
 configs/server.yaml
 scripts/setup-production.sh
+data/*.db
+data/buffer.json
