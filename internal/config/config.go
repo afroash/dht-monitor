@@ -10,20 +10,26 @@ import (
 
 // Config holds all configuration for the sensor client
 type Config struct {
-	Sensor  SensorConfig  `yaml:"sensor"`
-	Server  ServerConfig  `yaml:"server"`
-	Buffer  BufferConfig  `yaml:"buffer"`
-	Logging LoggingConfig `yaml:"logging"`
+	Sensor   SensorConfig   `yaml:"sensor"`
+	Server   ServerConfig   `yaml:"server"`
+	Buffer   BufferConfig   `yaml:"buffer"`
+	Logging  LoggingConfig  `yaml:"logging"`
+	Database DatabaseConfig `yaml:"database"`
+}
+
+// DatabaseConfig contains database-specific settings
+type DatabaseConfig struct {
+	Enabled       bool          `yaml:"enabled"`
+	Path          string        `yaml:"path"`
+	RetentionDays int           `yaml:"retention_days"`
+	CleanupPeriod time.Duration `yaml:"cleanup_period"`
+	BatchSize     int           `yaml:"batch_size"`
+	FlushPeriod   time.Duration `yaml:"flush_period"`
+	ChannelSize   int           `yaml:"channel_size"`
 }
 
 // SensorConfig contains sensor-specific settings
 type SensorConfig struct {
-	// TODO: Add fields:
-	// - ID (string) - unique sensor identifier
-	// - Location (string) - where the sensor is located
-	// - Type (string) - sensor type (e.g., "DHT11")
-	// - GPIOPin (int) - GPIO pin number
-	// - ReadInterval (time.Duration) - how often to read (default 30s)
 	ID           string        `yaml:"id"`
 	Location     string        `yaml:"location"`
 	Type         string        `yaml:"type"`

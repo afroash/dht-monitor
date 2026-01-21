@@ -4,8 +4,45 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>DHT Monitor Dashboard</title>
-    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/echarts@5.4.3/dist/echarts.min.js"></script>
     <style>
+        :root {
+            /* Dark theme (default) */
+            --bg-primary: #0b0c0e;
+            --bg-secondary: #111217;
+            --bg-panel: #18191d;
+            --border-color: #2a2e3a;
+            --text-primary: #fff;
+            --text-secondary: #d8d9da;
+            --text-muted: #9fa2a8;
+            --text-footer: #6e7178;
+            --accent-blue: #3274d9;
+            --hover-bg: #2a2e3a;
+            --status-online-bg: rgba(73, 189, 114, 0.15);
+            --status-online-border: rgba(73, 189, 114, 0.3);
+            --status-offline-bg: rgba(242, 73, 92, 0.15);
+            --status-offline-border: rgba(242, 73, 92, 0.3);
+            --chart-mask: rgba(11, 12, 14, 0.8);
+        }
+
+        .light-theme {
+            --bg-primary: #f0f1f3;
+            --bg-secondary: #e4e6e9;
+            --bg-panel: #ffffff;
+            --border-color: #d0d3d9;
+            --text-primary: #1a1c1e;
+            --text-secondary: #3d4047;
+            --text-muted: #6b6f78;
+            --text-footer: #8a8e96;
+            --accent-blue: #2563eb;
+            --hover-bg: #d8dbe0;
+            --status-online-bg: rgba(34, 139, 34, 0.12);
+            --status-online-border: rgba(34, 139, 34, 0.25);
+            --status-offline-bg: rgba(200, 50, 50, 0.12);
+            --status-offline-border: rgba(200, 50, 50, 0.25);
+            --chart-mask: rgba(240, 241, 243, 0.9);
+        }
+
         * {
             margin: 0;
             padding: 0;
@@ -13,312 +50,1011 @@
         }
 
         body {
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif;
+            background: var(--bg-primary);
+            color: var(--text-secondary);
             min-height: 100vh;
-            padding: 2rem;
+            transition: background 0.3s ease, color 0.3s ease;
         }
 
-        .container {
-            max-width: 1200px;
-            margin: 0 auto;
-        }
-
-        header {
-            text-align: center;
-            color: white;
-            margin-bottom: 3rem;
-        }
-
-        h1 {
-            font-size: 2.5rem;
-            margin-bottom: 0.5rem;
-        }
-
-        .subtitle {
-            opacity: 0.9;
-            font-size: 1.1rem;
-        }
-
-        .grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
-            gap: 1.5rem;
-            margin-bottom: 2rem;
-        }
-
-        .card {
-            background: white;
-            border-radius: 1rem;
-            padding: 2rem;
-            box-shadow: 0 10px 30px rgba(0,0,0,0.2);
-        }
-
-        .card-title {
-            font-size: 0.9rem;
-            text-transform: uppercase;
-            color: #666;
-            margin-bottom: 1rem;
-            font-weight: 600;
-        }
-
-        .reading {
+        /* Header */
+        .header {
+            background: var(--bg-secondary);
+            border-bottom: 1px solid var(--border-color);
+            padding: 1rem 2rem;
             display: flex;
-            align-items: baseline;
-            gap: 0.5rem;
+            justify-content: space-between;
+            align-items: center;
+            transition: background 0.3s ease, border-color 0.3s ease;
         }
 
-        .reading-value {
-            font-size: 3rem;
-            font-weight: bold;
-            color: #333;
+        .header-title {
+            display: flex;
+            align-items: center;
+            gap: 1rem;
         }
 
-        .reading-unit {
+        .header-title h1 {
             font-size: 1.5rem;
-            color: #999;
+            font-weight: 500;
+            color: var(--text-primary);
         }
 
-        .status {
-            display: inline-flex;
+        .header-controls {
+            display: flex;
+            gap: 1rem;
+            align-items: center;
+        }
+
+        /* Status Badge */
+        .status-badge {
+            display: flex;
             align-items: center;
             gap: 0.5rem;
             padding: 0.5rem 1rem;
-            border-radius: 2rem;
-            font-size: 0.9rem;
-            font-weight: 600;
+            background: var(--status-online-bg);
+            border: 1px solid var(--status-online-border);
+            border-radius: 4px;
+            font-size: 0.875rem;
+            transition: background 0.3s ease, border-color 0.3s ease;
         }
 
-        .status-online {
-            background: #d4edda;
-            color: #155724;
-        }
-
-        .status-offline {
-            background: #f8d7da;
-            color: #721c24;
+        .status-badge.offline {
+            background: var(--status-offline-bg);
+            border-color: var(--status-offline-border);
         }
 
         .status-dot {
             width: 8px;
             height: 8px;
             border-radius: 50%;
-            animation: pulse 2s ease-in-out infinite;
+            background: #49bd72;
         }
 
-        .status-online .status-dot {
-            background: #28a745;
+        .status-badge.offline .status-dot {
+            background: #f2495c;
         }
 
-        @keyframes pulse {
-            0%, 100% { opacity: 1; }
-            50% { opacity: 0.5; }
+        /* Time Controls */
+        .time-controls {
+            background: var(--bg-panel);
+            border: 1px solid var(--border-color);
+            border-radius: 4px;
+            padding: 0.5rem;
+            display: flex;
+            gap: 0.5rem;
+            transition: background 0.3s ease, border-color 0.3s ease;
+        }
+
+        .mode-toggle {
+            display: flex;
+            gap: 0.25rem;
+            background: var(--bg-secondary);
+            border-radius: 4px;
+            padding: 0.25rem;
+            transition: background 0.3s ease;
+        }
+
+        .mode-btn {
+            padding: 0.4rem 1rem;
+            border: none;
+            background: transparent;
+            color: var(--text-secondary);
+            cursor: pointer;
+            border-radius: 3px;
+            font-size: 0.875rem;
+            transition: all 0.2s;
+        }
+
+        .mode-btn.active {
+            background: var(--accent-blue);
+            color: white;
+        }
+
+        .mode-btn:hover:not(.active) {
+            background: var(--hover-bg);
+        }
+
+        .time-window-select {
+            display: flex;
+            gap: 0.25rem;
+        }
+
+        .window-btn {
+            padding: 0.4rem 0.8rem;
+            border: 1px solid var(--border-color);
+            background: var(--bg-panel);
+            color: var(--text-secondary);
+            cursor: pointer;
+            font-size: 0.875rem;
+            transition: all 0.2s;
+        }
+
+        .window-btn:first-child {
+            border-radius: 4px 0 0 4px;
+        }
+
+        .window-btn:last-child {
+            border-radius: 0 4px 4px 0;
+        }
+
+        .window-btn.active {
+            background: var(--accent-blue);
+            border-color: var(--accent-blue);
+            color: white;
+        }
+
+        .window-btn:hover:not(.active) {
+            background: var(--hover-bg);
+        }
+
+        .nav-controls {
+            display: flex;
+            gap: 0.5rem;
+            align-items: center;
+        }
+
+        .nav-btn {
+            padding: 0.4rem 1rem;
+            border: 1px solid var(--border-color);
+            background: var(--bg-panel);
+            color: var(--text-secondary);
+            cursor: pointer;
+            border-radius: 4px;
+            font-size: 0.875rem;
+            transition: all 0.2s;
+        }
+
+        .nav-btn:hover:not(:disabled) {
+            background: var(--hover-bg);
+        }
+
+        .nav-btn:disabled {
+            opacity: 0.4;
+            cursor: not-allowed;
+        }
+
+        .time-range {
+            padding: 0.4rem 1rem;
+            background: var(--bg-secondary);
+            border-radius: 4px;
+            font-size: 0.875rem;
+            color: var(--text-secondary);
+            transition: background 0.3s ease;
+        }
+
+        /* Main Content */
+        .container {
+            padding: 1.5rem;
+            max-width: 1600px;
+            margin: 0 auto;
+        }
+
+        /* Panels Grid */
+        .panels-grid {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 1rem;
+            margin-bottom: 1.5rem;
+        }
+
+        .panel {
+            background: var(--bg-panel);
+            border: 1px solid var(--border-color);
+            border-radius: 4px;
+            padding: 1rem;
+            transition: background 0.3s ease, border-color 0.3s ease;
+        }
+
+        .panel-header {
+            font-size: 0.875rem;
+            color: var(--text-muted);
+            margin-bottom: 0.75rem;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .panel-value {
+            font-size: 2.5rem;
+            font-weight: 500;
+            color: var(--text-primary);
+            line-height: 1;
+        }
+
+        .panel-unit {
+            font-size: 1.25rem;
+            color: var(--text-muted);
+            margin-left: 0.25rem;
+        }
+
+        /* Chart Container */
+        .chart-panel {
+            background: var(--bg-panel);
+            border: 1px solid var(--border-color);
+            border-radius: 4px;
+            padding: 1rem;
+            margin-bottom: 1rem;
+            transition: background 0.3s ease, border-color 0.3s ease;
+        }
+
+        .chart-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 1rem;
+        }
+
+        .chart-title {
+            font-size: 1rem;
+            color: var(--text-primary);
+            font-weight: 500;
+        }
+
+        .chart-legend {
+            display: flex;
+            gap: 1.5rem;
+            font-size: 0.875rem;
+        }
+
+        .legend-item {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .legend-color {
+            width: 12px;
+            height: 12px;
+            border-radius: 2px;
         }
 
         .chart-container {
-            grid-column: 1 / -1;
-            height: 400px;
+            width: 100%;
+            height: 350px;
         }
 
-        .stats-grid {
-            display: grid;
-            grid-template-columns: repeat(2, 1fr);
-            gap: 1rem;
-        }
-
-        .stat {
+        /* Footer */
+        .footer {
             text-align: center;
+            padding: 1rem;
+            font-size: 0.875rem;
+            color: var(--text-footer);
         }
 
-        .stat-value {
-            font-size: 2rem;
-            font-weight: bold;
-            color: #667eea;
+        /* Theme Toggle */
+        .theme-toggle {
+            position: fixed;
+            bottom: 1.5rem;
+            right: 1.5rem;
+            width: 48px;
+            height: 48px;
+            border-radius: 50%;
+            border: 1px solid var(--border-color);
+            background: var(--bg-panel);
+            color: var(--text-secondary);
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.25rem;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+            transition: all 0.3s ease;
+            z-index: 1000;
         }
 
-        .stat-label {
-            font-size: 0.9rem;
-            color: #666;
-            margin-top: 0.25rem;
+        .theme-toggle:hover {
+            transform: scale(1.1);
+            background: var(--hover-bg);
         }
 
-        .last-update {
-            text-align: center;
-            color: white;
-            opacity: 0.8;
-            font-size: 0.9rem;
-            margin-top: 2rem;
+        .theme-toggle .icon-sun,
+        .theme-toggle .icon-moon {
+            position: absolute;
+            transition: opacity 0.3s ease, transform 0.3s ease;
+        }
+
+        .theme-toggle .icon-sun {
+            opacity: 0;
+            transform: rotate(-90deg);
+        }
+
+        .theme-toggle .icon-moon {
+            opacity: 1;
+            transform: rotate(0deg);
+        }
+
+        .light-theme .theme-toggle .icon-sun {
+            opacity: 1;
+            transform: rotate(0deg);
+        }
+
+        .light-theme .theme-toggle .icon-moon {
+            opacity: 0;
+            transform: rotate(90deg);
+        }
+
+        .light-theme .theme-toggle {
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+        }
+
+        /* Responsive */
+        @media (max-width: 1200px) {
+            .panels-grid {
+                grid-template-columns: repeat(2, 1fr);
+            }
+        }
+
+        @media (max-width: 768px) {
+            .header {
+                flex-direction: column;
+                gap: 1rem;
+            }
+
+            .panels-grid {
+                grid-template-columns: 1fr;
+            }
+
+            .time-controls {
+                flex-direction: column;
+            }
+
+            .header-controls {
+                flex-direction: column;
+                width: 100%;
+            }
+
+            .time-controls {
+                width: 100%;
+            }
+
+            .theme-toggle {
+                bottom: 1rem;
+                right: 1rem;
+                width: 42px;
+                height: 42px;
+            }
         }
     </style>
 </head>
 <body>
-    <div class="container">
-        <header>
+    <!-- Header -->
+    <div class="header">
+        <div class="header-title">
             <h1>🌡️ DHT Monitor</h1>
-            <p class="subtitle">Real-time Temperature & Humidity Monitoring</p>
-        </header>
-
-        <div class="grid">
-            <div class="card">
-                <div class="card-title">Temperature</div>
-                <div class="reading">
-                    <span class="reading-value" id="temp-value">--</span>
-                    <span class="reading-unit">°C</span>
-                </div>
-            </div>
-
-            <div class="card">
-                <div class="card-title">Humidity</div>
-                <div class="reading">
-                    <span class="reading-value" id="humidity-value">--</span>
-                    <span class="reading-unit">%</span>
-                </div>
-            </div>
-
-            <div class="card">
-                <div class="card-title">Sensor Status</div>
-                <span class="status" id="status">
-                    <span class="status-dot"></span>
-                    <span id="status-text">Loading...</span>
-                </span>
-            </div>
-
-            <div class="card">
-                <div class="card-title">Statistics</div>
-                <div class="stats-grid">
-                    <div class="stat">
-                        <div class="stat-value" id="total-readings">--</div>
-                        <div class="stat-label">Total Readings</div>
-                    </div>
-                    <div class="stat">
-                        <div class="stat-value" id="sensor-count">--</div>
-                        <div class="stat-label">Sensors</div>
-                    </div>
-                </div>
-            </div>
-
-            <div class="card chart-container">
-                <div class="card-title">Temperature History</div>
-                <canvas id="temp-chart"></canvas>
-            </div>
         </div>
-
-        <div class="last-update">
-            Last updated: <span id="last-update-time">Never</span>
+        <div class="header-controls">
+            <div class="status-badge" id="status-badge">
+                <span class="status-dot"></span>
+                <span id="status-text">Loading...</span>
+            </div>
+            <div class="time-controls">
+                <div class="mode-toggle">
+                    <button class="mode-btn active" data-mode="live">Live</button>
+                    <button class="mode-btn" data-mode="historical">Historical</button>
+                </div>
+                <div class="time-window-select" id="time-window-select" style="display: none;">
+                    <button class="window-btn" data-duration="3600">1h</button>
+                    <button class="window-btn" data-duration="21600">6h</button>
+                    <button class="window-btn active" data-duration="86400">24h</button>
+                    <button class="window-btn" data-duration="604800">7d</button>
+                    <button class="window-btn" data-duration="2592000">30d</button>
+                </div>
+                <div class="nav-controls" id="nav-controls" style="display: none;">
+                    <button class="nav-btn" id="prev-btn">◀</button>
+                    <div class="time-range" id="time-range">--</div>
+                    <button class="nav-btn" id="next-btn">▶</button>
+                </div>
+            </div>
         </div>
     </div>
 
+    <!-- Main Content -->
+    <div class="container">
+        <!-- Stats Panels -->
+        <div class="panels-grid">
+            <div class="panel">
+                <div class="panel-header">Temperature</div>
+                <div>
+                    <span class="panel-value" id="temp-value">--</span>
+                    <span class="panel-unit">°C</span>
+                </div>
+            </div>
+            <div class="panel">
+                <div class="panel-header">Humidity</div>
+                <div>
+                    <span class="panel-value" id="humidity-value">--</span>
+                    <span class="panel-unit">%</span>
+                </div>
+            </div>
+            <div class="panel">
+                <div class="panel-header">Total Readings</div>
+                <div>
+                    <span class="panel-value" id="total-readings">--</span>
+                </div>
+            </div>
+            <div class="panel">
+                <div class="panel-header">Active Sensors</div>
+                <div>
+                    <span class="panel-value" id="sensor-count">--</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- Combined Chart -->
+        <div class="chart-panel">
+            <div class="chart-header">
+                <div class="chart-title">Temperature & Humidity History</div>
+                <div class="chart-legend">
+                    <div class="legend-item">
+                        <div class="legend-color" style="background: #73bf69;"></div>
+                        <span>Temperature (°C)</span>
+                    </div>
+                    <div class="legend-item">
+                        <div class="legend-color" style="background: #5794f2;"></div>
+                        <span>Humidity (%)</span>
+                    </div>
+                </div>
+            </div>
+            <div class="chart-container" id="main-chart"></div>
+        </div>
+    </div>
+
+    <!-- Footer -->
+    <div class="footer">
+        Last updated: <span id="last-update">Never</span>
+    </div>
+
+    <!-- Theme Toggle -->
+    <button class="theme-toggle" id="theme-toggle" title="Toggle theme">
+        <span class="icon-sun">☀️</span>
+        <span class="icon-moon">🌙</span>
+    </button>
+
     <script>
-        // Initialize Chart.js
-        const ctx = document.getElementById('temp-chart');
-        const tempChart = new Chart(ctx, {
-            type: 'line',
-            data: {
-                labels: [],
-                datasets: [{
-                    label: 'Temperature (°C)',
-                    data: [],
-                    borderColor: '#667eea',
-                    backgroundColor: 'rgba(102, 126, 234, 0.1)',
-                    tension: 0.4,
-                    fill: true
-                }]
-            },
-            options: {
-                responsive: true,
-                maintainAspectRatio: false,
-                plugins: {
-                    legend: {
-                        display: false
+        // =====================================================
+        // Theme Management
+        // =====================================================
+        let chartInitialized = false;
+
+        function getStoredTheme() {
+            return localStorage.getItem('dht-monitor-theme') || 'dark';
+        }
+
+        function applyBodyTheme(theme) {
+            if (theme === 'light') {
+                document.body.classList.add('light-theme');
+            } else {
+                document.body.classList.remove('light-theme');
+            }
+            localStorage.setItem('dht-monitor-theme', theme);
+        }
+
+        function setTheme(theme) {
+            applyBodyTheme(theme);
+            if (chartInitialized) {
+                updateChartTheme(theme);
+            }
+        }
+
+        function toggleTheme() {
+            const currentTheme = document.body.classList.contains('light-theme') ? 'light' : 'dark';
+            const newTheme = currentTheme === 'dark' ? 'light' : 'dark';
+            setTheme(newTheme);
+        }
+
+        function updateChartTheme(theme) {
+            const isLight = theme === 'light';
+            mainChart.setOption({
+                backgroundColor: 'transparent',
+                xAxis: {
+                    axisLine: { lineStyle: { color: isLight ? '#d0d3d9' : '#2a2e3a' } },
+                    axisLabel: { color: isLight ? '#6b6f78' : '#9fa2a8' },
+                    splitLine: { lineStyle: { color: isLight ? '#d0d3d9' : '#2a2e3a' } }
+                },
+                yAxis: [
+                    {
+                        nameTextStyle: { color: isLight ? '#6b6f78' : '#9fa2a8' },
+                        axisLine: { lineStyle: { color: isLight ? '#d0d3d9' : '#2a2e3a' } },
+                        axisLabel: { color: isLight ? '#6b6f78' : '#9fa2a8' },
+                        splitLine: { lineStyle: { color: isLight ? '#d0d3d9' : '#2a2e3a' } }
+                    },
+                    {
+                        nameTextStyle: { color: isLight ? '#6b6f78' : '#9fa2a8' },
+                        axisLine: { lineStyle: { color: isLight ? '#d0d3d9' : '#2a2e3a' } },
+                        axisLabel: { color: isLight ? '#6b6f78' : '#9fa2a8' }
+                    }
+                ],
+                tooltip: {
+                    backgroundColor: isLight ? 'rgba(255, 255, 255, 0.95)' : 'rgba(24, 25, 29, 0.95)',
+                    borderColor: isLight ? '#d0d3d9' : '#2a2e3a',
+                    textStyle: { color: isLight ? '#3d4047' : '#d8d9da' }
+                }
+            });
+        }
+
+        // Apply body theme immediately (before chart init)
+        applyBodyTheme(getStoredTheme());
+
+        // =====================================================
+        // State Management
+        // =====================================================
+        const state = {
+            mode: 'live',
+            timeWindow: 86400,
+            viewEnd: null,
+            viewStart: null,
+            autoRefreshInterval: null
+        };
+
+        // =====================================================
+        // Chart Initialization
+        // =====================================================
+        const currentTheme = getStoredTheme();
+        const mainChart = echarts.init(document.getElementById('main-chart'), currentTheme === 'light' ? null : 'dark');
+
+        const chartOption = {
+            backgroundColor: 'transparent',
+            tooltip: {
+                trigger: 'axis',
+                axisPointer: {
+                    type: 'cross',
+                    label: {
+                        backgroundColor: '#6a7985'
                     }
                 },
-                scales: {
-                    y: {
-                        beginAtZero: false
+                backgroundColor: 'rgba(24, 25, 29, 0.95)',
+                borderColor: '#2a2e3a',
+                textStyle: {
+                    color: '#d8d9da'
+                }
+            },
+            grid: {
+                left: '3%',
+                right: '4%',
+                bottom: '3%',
+                top: '3%',
+                containLabel: true
+            },
+            xAxis: {
+                type: 'time',
+                boundaryGap: false,
+                axisLine: {
+                    lineStyle: { color: '#2a2e3a' }
+                },
+                axisLabel: {
+                    color: '#9fa2a8',
+                    formatter: function(value) {
+                        const date = new Date(value);
+                        if (state.timeWindow > 86400) {
+                            return date.toLocaleString('en-US', { 
+                                month: 'short', 
+                                day: 'numeric',
+                                hour: '2-digit',
+                                minute: '2-digit'
+                            });
+                        }
+                        return date.toLocaleTimeString('en-US', { 
+                            hour: '2-digit', 
+                            minute: '2-digit' 
+                        });
+                    }
+                },
+                splitLine: {
+                    lineStyle: { color: '#2a2e3a' }
+                }
+            },
+            yAxis: [
+                {
+                    type: 'value',
+                    name: 'Temperature (°C)',
+                    nameTextStyle: { color: '#9fa2a8' },
+                    scale: true,  // Auto-scale based on data range
+                    axisLine: {
+                        lineStyle: { color: '#2a2e3a' }
+                    },
+                    axisLabel: {
+                        color: '#9fa2a8',
+                        formatter: '{value}°C'
+                    },
+                    splitLine: {
+                        lineStyle: { color: '#2a2e3a' }
+                    }
+                },
+                {
+                    type: 'value',
+                    name: 'Humidity (%)',
+                    nameTextStyle: { color: '#9fa2a8' },
+                    scale: true,  // Auto-scale based on data range
+                    axisLine: {
+                        lineStyle: { color: '#2a2e3a' }
+                    },
+                    axisLabel: {
+                        color: '#9fa2a8',
+                        formatter: '{value}%'
+                    },
+                    splitLine: {
+                        show: false
                     }
                 }
-            }
+            ],
+            series: [
+                {
+                    name: 'Temperature',
+                    type: 'line',
+                    smooth: true,
+                    symbol: 'none',
+                    sampling: 'lttb',
+                    yAxisIndex: 0,
+                    lineStyle: {
+                        color: '#73bf69',
+                        width: 2
+                    },
+                    areaStyle: {
+                        color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [
+                            { offset: 0, color: 'rgba(115, 191, 105, 0.3)' },
+                            { offset: 1, color: 'rgba(115, 191, 105, 0.05)' }
+                        ])
+                    },
+                    data: []
+                },
+                {
+                    name: 'Humidity',
+                    type: 'line',
+                    smooth: true,
+                    symbol: 'none',
+                    sampling: 'lttb',
+                    yAxisIndex: 1,
+                    lineStyle: {
+                        color: '#5794f2',
+                        width: 2
+                    },
+                    areaStyle: {
+                        color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [
+                            { offset: 0, color: 'rgba(87, 148, 242, 0.3)' },
+                            { offset: 1, color: 'rgba(87, 148, 242, 0.05)' }
+                        ])
+                    },
+                    data: []
+                }
+            ]
+        };
+
+        mainChart.setOption(chartOption);
+
+        // Auto-resize chart
+        window.addEventListener('resize', () => {
+            mainChart.resize();
         });
 
-        // Fetch and update current reading
-        async function updateCurrent() {
+        // =====================================================
+        // API Functions
+        // =====================================================
+        async function fetchCurrent() {
             try {
                 const response = await fetch('/api/current');
-                
                 if (!response.ok) {
                     console.error('Failed to fetch current reading: HTTP', response.status);
-                    const statusEl = document.getElementById('status');
-                    statusEl.className = 'status status-offline';
-                    document.getElementById('status-text').textContent = 'Offline';
-                    return;
+                    updateStatus(false);
+                    return null;
                 }
-                
-                const reading = await response.json();
-                
-                if (reading) {
-                    document.getElementById('temp-value').textContent = reading.temperature.toFixed(1);
-                    document.getElementById('humidity-value').textContent = reading.humidity.toFixed(0);
-                    
-                    const statusEl = document.getElementById('status');
-                    statusEl.className = 'status status-online';
-                    document.getElementById('status-text').textContent = 'Online';
-                    
-                    document.getElementById('last-update-time').textContent = new Date().toLocaleTimeString();
-                }
+                return await response.json();
             } catch (error) {
                 console.error('Failed to fetch current reading:', error);
-                const statusEl = document.getElementById('status');
-                statusEl.className = 'status status-offline';
-                document.getElementById('status-text').textContent = 'Offline';
+                updateStatus(false);
+                return null;
             }
         }
 
-        // Fetch and update stats
-        async function updateStats() {
+        async function fetchStats() {
             try {
                 const response = await fetch('/api/stats');
-                const stats = await response.json();
-                
-                document.getElementById('total-readings').textContent = stats.total_readings || 0;
-                document.getElementById('sensor-count').textContent = stats.unique_sensors || 0;
+                return await response.json();
             } catch (error) {
                 console.error('Failed to fetch stats:', error);
+                return null;
             }
         }
 
-        // Fetch and update chart
-        async function updateChart() {
+        async function fetchHistory(start, end) {
             try {
-                const response = await fetch('/api/history?limit=20');
-                const readings = await response.json();
+                const params = new URLSearchParams();
+                if (start) params.append('start', start.toISOString());
+                if (end) params.append('end', end.toISOString());
                 
-                if (readings && readings.length > 0) {
-                    tempChart.data.labels = readings.map(r => 
-                        new Date(r.timestamp).toLocaleTimeString()
-                    ).reverse();
-                    tempChart.data.datasets[0].data = readings.map(r => 
-                        r.temperature
-                    ).reverse();
-                    tempChart.update();
+                const response = await fetch(`/api/history?${params}`);
+                if (!response.ok) {
+                    console.error('Failed to fetch history: HTTP', response.status);
+                    return [];
                 }
+                const data = await response.json();
+                
+                // Handle different response formats
+                if (!data) {
+                    console.log('No data returned from /api/history');
+                    return [];
+                }
+                
+                // If data is already an array, return it
+                if (Array.isArray(data)) {
+                    console.log(`Fetched ${data.length} readings from history API`);
+                    return data;
+                }
+                
+                // If data has a 'readings' property
+                if (data.readings && Array.isArray(data.readings)) {
+                    console.log(`Fetched ${data.readings.length} readings from history API`);
+                    return data.readings;
+                }
+                
+                console.error('Unexpected data format from /api/history:', data);
+                return [];
             } catch (error) {
-                console.error('Failed to update chart:', error);
+                console.error('Failed to fetch history:', error);
+                return [];
             }
         }
 
-        // Initial load
-        updateCurrent();
-        updateStats();
-        updateChart();
+        // =====================================================
+        // UI Update Functions
+        // =====================================================
+        function updateStatus(online) {
+            const badge = document.getElementById('status-badge');
+            const text = document.getElementById('status-text');
+            
+            if (online) {
+                badge.classList.remove('offline');
+                text.textContent = 'Online';
+            } else {
+                badge.classList.add('offline');
+                text.textContent = 'Offline';
+            }
+        }
 
-        // Auto-refresh every 5 seconds
-        setInterval(() => {
-            updateCurrent();
-            updateStats();
-        }, 5000);
+        function updateCurrentReadings(reading) {
+            if (reading) {
+                document.getElementById('temp-value').textContent = reading.temperature.toFixed(1);
+                document.getElementById('humidity-value').textContent = reading.humidity.toFixed(0);
+                updateStatus(true);
+                document.getElementById('last-update').textContent = new Date().toLocaleTimeString();
+            }
+        }
 
-        // Update chart every 30 seconds
-        setInterval(updateChart, 30000);
+        function updateStatsDisplay(stats) {
+            if (stats) {
+                document.getElementById('total-readings').textContent = (stats.total_readings || 0).toLocaleString();
+                document.getElementById('sensor-count').textContent = stats.unique_sensors || 0;
+            }
+        }
+
+        function updateChart(readings) {
+            // Defensive check - ensure readings is an array
+            if (!readings) {
+                console.log('No readings provided to updateChart');
+                mainChart.hideLoading();
+                return;
+            }
+            
+            if (!Array.isArray(readings)) {
+                console.error('updateChart received non-array data:', typeof readings, readings);
+                mainChart.hideLoading();
+                return;
+            }
+            
+            if (readings.length === 0) {
+                console.log('Empty readings array - no data to display');
+                mainChart.hideLoading();
+                // Show empty state
+                mainChart.setOption({
+                    series: [
+                        { data: [] },
+                        { data: [] }
+                    ]
+                });
+                return;
+            }
+
+            console.log(`Updating chart with ${readings.length} readings`);
+
+            // Sort by timestamp
+            readings.sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
+
+            // Prepare data for ECharts
+            const tempData = readings.map(r => [new Date(r.timestamp), r.temperature]);
+            const humidityData = readings.map(r => [new Date(r.timestamp), r.humidity]);
+
+            console.log('Chart data prepared:', { tempPoints: tempData.length, humidityPoints: humidityData.length });
+            console.log('Sample data point:', readings[0]);
+
+            mainChart.hideLoading();
+            mainChart.setOption({
+                series: [
+                    { data: tempData },
+                    { data: humidityData }
+                ]
+            });
+        }
+
+        function updateTimeRangeDisplay() {
+            const rangeEl = document.getElementById('time-range');
+            
+            if (state.mode === 'live' || !state.viewStart || !state.viewEnd) {
+                rangeEl.textContent = '--';
+                return;
+            }
+
+            const formatDate = (d) => {
+                if (state.timeWindow > 86400) {
+                    return d.toLocaleString('en-US', { 
+                        month: 'short', 
+                        day: 'numeric', 
+                        hour: '2-digit', 
+                        minute: '2-digit' 
+                    });
+                }
+                return d.toLocaleTimeString('en-US', { 
+                    hour: '2-digit', 
+                    minute: '2-digit' 
+                });
+            };
+
+            rangeEl.textContent = `${formatDate(state.viewStart)} — ${formatDate(state.viewEnd)}`;
+        }
+
+        function updateNavigationButtons() {
+            const nextBtn = document.getElementById('next-btn');
+            const now = new Date();
+            
+            if (state.viewEnd && state.viewEnd >= now) {
+                nextBtn.disabled = true;
+            } else {
+                nextBtn.disabled = false;
+            }
+        }
+
+        // =====================================================
+        // Mode & Window Control
+        // =====================================================
+        function setMode(mode) {
+            state.mode = mode;
+
+            document.querySelectorAll('.mode-btn').forEach(btn => {
+                btn.classList.toggle('active', btn.dataset.mode === mode);
+            });
+
+            const timeWindowSelect = document.getElementById('time-window-select');
+            const navControls = document.getElementById('nav-controls');
+
+            if (mode === 'live') {
+                timeWindowSelect.style.display = 'none';
+                navControls.style.display = 'none';
+                state.viewEnd = null;
+                state.viewStart = null;
+                startAutoRefresh();
+            } else {
+                timeWindowSelect.style.display = 'flex';
+                navControls.style.display = 'flex';
+                stopAutoRefresh();
+                state.viewEnd = new Date();
+                state.viewStart = new Date(state.viewEnd - state.timeWindow * 1000);
+                loadHistoricalData();
+            }
+
+            updateTimeRangeDisplay();
+        }
+
+        function setTimeWindow(duration) {
+            state.timeWindow = duration;
+
+            document.querySelectorAll('.window-btn').forEach(btn => {
+                btn.classList.toggle('active', parseInt(btn.dataset.duration) === duration);
+            });
+
+            if (state.mode === 'historical') {
+                state.viewStart = new Date(state.viewEnd - state.timeWindow * 1000);
+                loadHistoricalData();
+            }
+        }
+
+        function navigatePrevious() {
+            if (state.mode !== 'historical') return;
+
+            const windowMs = state.timeWindow * 1000;
+            state.viewEnd = new Date(state.viewStart);
+            state.viewStart = new Date(state.viewEnd - windowMs);
+            loadHistoricalData();
+        }
+
+        function navigateNext() {
+            if (state.mode !== 'historical') return;
+
+            const windowMs = state.timeWindow * 1000;
+            state.viewStart = new Date(state.viewEnd);
+            state.viewEnd = new Date(state.viewStart.getTime() + windowMs);
+
+            const now = new Date();
+            if (state.viewEnd > now) {
+                state.viewEnd = now;
+            }
+
+            loadHistoricalData();
+        }
+
+        // =====================================================
+        // Data Loading
+        // =====================================================
+        function getLoadingOptions() {
+            const isLight = document.body.classList.contains('light-theme');
+            return {
+                text: 'Loading data...',
+                color: isLight ? '#2563eb' : '#3274d9',
+                textColor: isLight ? '#3d4047' : '#d8d9da',
+                maskColor: isLight ? 'rgba(240, 241, 243, 0.9)' : 'rgba(11, 12, 14, 0.8)'
+            };
+        }
+
+        async function loadLiveData() {
+            mainChart.showLoading(getLoadingOptions());
+
+            const reading = await fetchCurrent();
+            if (reading) {
+                updateCurrentReadings(reading);
+            }
+
+            const stats = await fetchStats();
+            if (stats) {
+                updateStatsDisplay(stats);
+            }
+
+            const end = new Date();
+            const start = new Date(end - state.timeWindow * 1000);
+            const readings = await fetchHistory(start, end);
+            updateChart(readings);
+        }
+
+        async function loadHistoricalData() {
+            mainChart.showLoading(getLoadingOptions());
+
+            const readings = await fetchHistory(state.viewStart, state.viewEnd);
+            updateChart(readings);
+            updateTimeRangeDisplay();
+            updateNavigationButtons();
+        }
+
+        function startAutoRefresh() {
+            stopAutoRefresh();
+            loadLiveData();
+            state.autoRefreshInterval = setInterval(loadLiveData, 5000);
+        }
+
+        function stopAutoRefresh() {
+            if (state.autoRefreshInterval) {
+                clearInterval(state.autoRefreshInterval);
+                state.autoRefreshInterval = null;
+            }
+        }
+
+        // =====================================================
+        // Event Listeners
+        // =====================================================
+        document.querySelectorAll('.mode-btn').forEach(btn => {
+            btn.addEventListener('click', () => setMode(btn.dataset.mode));
+        });
+
+        document.querySelectorAll('.window-btn').forEach(btn => {
+            btn.addEventListener('click', () => setTimeWindow(parseInt(btn.dataset.duration)));
+        });
+
+        document.getElementById('prev-btn').addEventListener('click', navigatePrevious);
+        document.getElementById('next-btn').addEventListener('click', navigateNext);
+        document.getElementById('theme-toggle').addEventListener('click', toggleTheme);
+
+        // =====================================================
+        // Initialize
+        // =====================================================
+        // Mark chart as initialized and apply theme
+        chartInitialized = true;
+        updateChartTheme(getStoredTheme());
+        setMode('live');
     </script>
 </body>
 </html>

@@ -46,6 +46,74 @@ jobs:
           chmod 600 ~/.ssh/deploy_key
           ssh-keyscan -H ${{ secrets.SSH_HOST }} >> ~/.ssh/known_hosts
 
+      # ============================================
+      # Phase 3B: Infrastructure Setup
+      # ============================================
+      - name: 🗄️ Setup Database Directory (Phase 3B)
+        run: |
+          echo "Setting up SQLite database directory..."
+          ssh -i ~/.ssh/deploy_key ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }} \
+            "sudo mkdir -p /var/lib/dht-monitor && \
+             sudo chown dht-monitor:dht-monitor /var/lib/dht-monitor && \
+             sudo chmod 750 /var/lib/dht-monitor"
+          
+          echo "✅ Database directory configured: /var/lib/dht-monitor"
+
+      - name: 🔧 Update Systemd Service (Phase 3B)
+        run: |
+          echo "Updating systemd service with SQLite support..."
+          
+          # Create updated service file
+          cat > /tmp/dht-server.service << 'EOF'
+          [Unit]
+          Description=DHT Monitor Server
+          After=network.target
+          Wants=cloudflared.service
+
+          [Service]
+          Type=simple
+          User=dht-monitor
+          Group=dht-monitor
+          WorkingDirectory=/opt/dht-monitor
+          ExecStart=/opt/dht-monitor/bin/dht-server --config /opt/dht-monitor/configs/server.yaml
+          Restart=always
+          RestartSec=5
+          StandardOutput=journal
+          StandardError=journal
+          SyslogIdentifier=dht-server
+
+          # Security
+          NoNewPrivileges=true
+          PrivateTmp=true
+          ProtectSystem=strict
+          ProtectHome=true
+          ReadWritePaths=/opt/dht-monitor/data /opt/dht-monitor/logs /var/lib/dht-monitor
+
+          # State Directory (for SQLite database)
+          StateDirectory=dht-monitor
+          StateDirectoryMode=0750
+
+          # Environment
+          Environment="SERVER_AUTH_TOKEN=REPLACE_ME_VIA_ENV_FILE"
+          Environment="ENV=production"
+
+          [Install]
+          WantedBy=multi-user.target
+          EOF
+          
+          # Deploy updated service file
+          scp -i ~/.ssh/deploy_key /tmp/dht-server.service \
+            ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }}:/tmp/
+          
+          ssh -i ~/.ssh/deploy_key ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }} \
+            "sudo mv /tmp/dht-server.service /etc/systemd/system/dht-server.service && \
+             sudo systemctl daemon-reload"
+          
+          echo "✅ Systemd service updated and reloaded"
+
+      # ============================================
+      # Standard Deployment Steps
+      # ============================================
       - name: 🚀 Deploy to Server
         run: |
           echo "Deploying to ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }}"
@@ -93,6 +161,17 @@ jobs:
       - name: ⏳ Wait for Service
         run: sleep 10
 
+      - name: 🗄️ Verify Database Created (Phase 3B)
+        run: |
+          echo "Checking database initialization..."
+          ssh -i ~/.ssh/deploy_key ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }} \
+            "if [ -f /var/lib/dht-monitor/dht.db ]; then \
+               echo '✅ Database created successfully'; \
+               sudo ls -lh /var/lib/dht-monitor/dht.db; \
+             else \
+               echo '⚠️ Database not yet created (will be created on first reading)'; \
+             fi"
+
       - name: 🏥 Health Check
         run: |
           echo "Checking service status..."
@@ -116,6 +195,20 @@ jobs:
           echo "❌ Health check failed after $MAX_RETRIES attempts"
           exit 1
 
+      - name: 📊 Test New API Endpoints (Phase 3B)
+        if: success()
+        run: |
+          echo "Testing Phase 3B endpoints..."
+          
+          echo "📊 Testing /api/stats..."
+          curl -f https://dht.afroash.com/api/stats || echo "⚠️ Stats endpoint failed"
+          
+          echo "📈 Testing /api/history..."
+          curl -f https://dht.afroash.com/api/history || echo "⚠️ History endpoint failed"
+          
+          echo "🌡️ Testing /api/current..."
+          curl -f https://dht.afroash.com/api/current || echo "⚠️ Current endpoint failed"
+
       - name: 📊 Show Logs on Failure
         if: failure()
         run: |
@@ -126,6 +219,18 @@ jobs:
         if: success()
         run: |
           echo "✅ Deployment successful!"
-          echo "🌐 Dashboard: https://dht.afroash.com"
-          echo "🏥 Health: https://dht.afroash.com/health"
-          echo "📊 Stats: https://dht.afroash.com/api/stats"
+          echo ""
+          echo "📦 Phase 3B Features Deployed:"
+          echo "  • SQLite persistence layer"
+          echo "  • Historical data navigation"
+          echo "  • Grafana-style dashboard"
+          echo ""
+          echo "🔗 URLs:"
+          echo "  🌐 Dashboard: https://dht.afroash.com"
+          echo "  🏥 Health: https://dht.afroash.com/health"
+          echo "  📊 Stats: https://dht.afroash.com/api/stats"
+          echo "  📈 History: https://dht.afroash.com/api/history"
+          echo ""
+          echo "🗄️ Database:"
+          echo "  Location: /var/lib/dht-monitor/dht.db"
+          echo "  Retention: 7 days"

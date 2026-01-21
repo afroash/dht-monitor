@@ -11,9 +11,10 @@ import (
 
 // ServerConfig holds server-specific configuration
 type AppConfig struct {
-	Server  ServerSettings  `yaml:"server"`
-	Storage StorageSettings `yaml:"storage"`
-	Logging LoggingConfig   `yaml:"logging"` // Reuse from Phase 1
+	Server   ServerSettings  `yaml:"server"`
+	Storage  StorageSettings `yaml:"storage"`
+	Logging  LoggingConfig   `yaml:"logging"` // Reuse from Phase 1
+	Database DatabaseConfig  `yaml:"database"`
 }
 
 // ServerSettings contains HTTP server configuration
@@ -41,12 +42,7 @@ type StorageSettings struct {
 
 // LoadServerConfig loads server configuration from YAML file
 func LoadAppConfig(path string) (*AppConfig, error) {
-	// TODO: Implement
-	// - Read file
-	// - Unmarshal YAML
-	// - Apply defaults
-	// - Override from environment
-	// - Validate
+
 	yamlData, err := os.ReadFile(path)
 	if err != nil {
 		fmt.Println("Error reading config file:", err)

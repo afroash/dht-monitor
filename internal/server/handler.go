@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/afroash/dht-monitor/internal/models"
+	"github.com/afroash/dht-monitor/internal/storage"
 	"github.com/gorilla/websocket"
 	"github.com/rs/zerolog"
 )
@@ -22,6 +23,7 @@ type Handler struct {
 	connToSensorID map[string]string // Maps conn.RemoteAddr().String() to actual sensor ID
 	allowedOrigins []string
 	mutex          sync.RWMutex
+	dbWriter       *storage.DBWriter
 }
 
 // SensorConnection represents an active sensor connection
@@ -186,6 +188,10 @@ func (h *Handler) handleReading(msg *models.Message) {
 		Humidity:    readingMsg.Humidity,
 		Temperature: readingMsg.Temperature,
 	}
+	if h.dbWriter != nil {
+		h.dbWriter.Write(&reading)
+	}
+
 	if reading.IsValid() {
 		h.store.Add(&reading)
 		h.logger.Info().Str("sensor_id", reading.SensorID).Float64("temp", reading.Temperature).Float64("humidity", reading.Humidity).Msg("Reading stored")
@@ -204,6 +210,9 @@ func (h *Handler) handleBatch(msg *models.Message) {
 	for _, reading := range batch.Readings {
 		if reading.IsValid() {
 			h.store.Add(&reading)
+		}
+		if h.dbWriter != nil {
+			h.dbWriter.Write(&reading)
 		}
 	}
 	h.logger.Info().Int("count", batch.Count).Msg("Batch stored")
@@ -283,14 +292,8 @@ func (h *Handler) GetActiveSensors() []SensorConnection {
 	return sensors
 }
 
-// ReadingStore interface for storing readings
-type ReadingStore interface {
-	Add(reading *models.Reading)
-	GetLatest(sensorID string, n int) []*models.Reading
-	GetAll() []*models.Reading
-	GetCurrentReading(sensorID string) *models.Reading
-	GetSensorIDs() []string
-	Stats() StoreStats
+func (h *Handler) SetDBWriter(dbWriter *storage.DBWriter) {
+	h.dbWriter = dbWriter
 }
 
 // Constants for WebSocket timeouts
