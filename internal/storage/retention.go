@@ -50,11 +50,23 @@ type RetentionCleanerStats struct {
 
 // NewRetentionCleaner creates and starts a new retention cleaner
 func NewRetentionCleaner(store *SQLiteStore, config RetentionCleanerConfig, logger zerolog.Logger) *RetentionCleaner {
+	cleanupPeriod := config.CleanupPeriod
+
+	// Validate CleanupPeriod to prevent time.NewTicker panic
+	if cleanupPeriod <= 0 {
+		defaultPeriod := 1 * time.Hour
+		logger.Warn().
+			Dur("provided_period", cleanupPeriod).
+			Dur("default_period", defaultPeriod).
+			Msg("Invalid CleanupPeriod provided (zero or negative), using default")
+		cleanupPeriod = defaultPeriod
+	}
+
 	c := &RetentionCleaner{
 		store:         store,
 		logger:        logger,
 		retentionDays: config.RetentionDays,
-		cleanupPeriod: config.CleanupPeriod,
+		cleanupPeriod: cleanupPeriod,
 		stopChan:      make(chan struct{}),
 	}
 
@@ -63,7 +75,7 @@ func NewRetentionCleaner(store *SQLiteStore, config RetentionCleanerConfig, logg
 
 	logger.Info().
 		Int("retention_days", config.RetentionDays).
-		Dur("cleanup_period", config.CleanupPeriod).
+		Dur("cleanup_period", cleanupPeriod).
 		Msg("RetentionCleaner started")
 
 	return c

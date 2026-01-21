@@ -107,11 +107,11 @@ echo "✅ Updated systemd service (added StateDirectory + ENV=production)"
 echo ""
 echo "🔍 Checking server configuration..."
 
-if grep -q "retention_days: 30" $APP_DIR/configs/server.yaml; then
-    echo "✅ Config already has retention_days setting"
+if grep -q "retention_days: 7" $APP_DIR/configs/server.yaml; then
+    echo "✅ Config already has retention_days setting (7 days)"
 else
     echo "⚠️  Warning: Config might need retention_days setting"
-    echo "   Current retention: Check your server.yaml manually"
+    echo "   Expected retention: 7 days - Check your server.yaml manually"
 fi
 
 # Show current DB path from config

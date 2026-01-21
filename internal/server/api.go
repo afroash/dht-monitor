@@ -242,25 +242,28 @@ func (api *APIHandler) queryHistoricalStore(sensorID, startStr, endStr, beforeSt
 func (api *APIHandler) HandleStats(w http.ResponseWriter, r *http.Request) {
 	stats := api.store.Stats()
 
-	// If we have a historical store, include its stats too
+	// Build response with top-level fields always present
+	response := map[string]interface{}{
+		"total_readings":   stats.TotalReadings,
+		"unique_sensors":   stats.UniqueSensors,
+		"current_readings": stats.CurrentReadings,
+		"oldest_reading":   stats.OldestReading,
+		"newest_reading":   stats.NewestReading,
+		"memory":           stats,
+	}
+
+	// If we have a historical store, include its stats under "database" key
 	if api.historicalStore != nil {
 		historicalStats, err := api.historicalStore.GetStorageStats()
 		if err != nil {
 			api.logger.Error().Err(err).Msg("Failed to get historical store stats")
 		} else {
-			// Return combined stats
-			combined := map[string]interface{}{
-				"memory":   stats,
-				"database": historicalStats,
-			}
-			w.Header().Set("Content-Type", "application/json")
-			json.NewEncoder(w).Encode(combined)
-			return
+			response["database"] = historicalStats
 		}
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(stats)
+	json.NewEncoder(w).Encode(response)
 }
 
 // HandleDailyStats returns aggregated daily statistics (requires historical store)
